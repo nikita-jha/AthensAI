@@ -1,55 +1,52 @@
 import openai
 import streamlit as st
-#import pinecone
 import os
-
-from langchain.document_loaders import WebBaseLoader, PyPDFLoader
-#from langchain.embeddings.openai import OpenAIEmbeddings
-#from langchain.vectorstores import Pinecone
-#from langchain.document_loaders import UnstructuredFileLoader
-
-#index_name = "new-demo"
-#docsearch = None
-
-# initialize pinecone
-#pinecone.init(
-#    api_key=st.secrets["pinecone-key"],  # find at app.pinecone.io
-#    environment=st.secrets["pinecone-env"]  # next to api key in console
-#)
+import util.util
+from util.util import chat
+from util.util import search, scrape, split, summarize
 
 # Set up page configuration
-st.set_page_config(page_title="Communications 📣", page_icon=":mega:", layout="wide")
-
-# Set up page header and subheader
-st.title("Political Campaign AI-powered Communication Tool")
-st.subheader("A custom app for generating communications")
-
-# Set API key
-openai.api_key = st.secrets["oai-key"]
-os.environ["OPENAI_API_KEY"] = st.secrets["oai-key"]
-
-#embeddings = OpenAIEmbeddings()
-
-# Description and information
+st.set_page_config(page_title="comms", page_icon=":mega:", layout="wide")
+st.title("comms")
 st.write("This tool generates communications for political campaigns using OpenAI's GPT-3 service. "
          "Please enter as much information as you can, and GPT will handle the rest.\n\n"
          "Note: GPT-3 might generate incorrect information, so editing output is still necessary. "
          "This is a demo with limitations.")
 
+meta=""
+
+personalize = st.checkbox('Personalize?')
+if personalize:
+    name = st.text_input("Candidate Name: ") + " campaign"
+    location = st.text_input("Location: ")
+    if st.button("Personalize"):
+        results = search(name, location)
+        search_dict = []
+        links = 0
+        q = "\nUsing the text, if you can, tell me about the candidate's biographical information, platform, " \
+            "main issues, and audience in detail. Do not just copy verbatim, infer information."
+
+        while links < 3 and links != len(results):
+            result = results['organic_results'][links]
+            link = result['link']
+            text = scrape(link)
+            if len(text) < 3000:
+                title = result['title']
+                snippet = result['snippet']
+                summary = summarize(text, q)
+                search_dict.append({'title': title, 'link': link, 'snippet': snippet, 'summary': summary})
+                st.write(summary)
+                all = ", ".join([entry['summary'] for entry in search_dict])
+            links += 1
+
+        meta = summarize(all, q)
+        st.write(meta)
+
 # Create a tab selection
 tabs = st.selectbox(
     'Which communication do you want to create? 📄',
-    ('Email 📧', 'Press Release 📰', 'Social Media 📲'))
+    ('Email 📧', 'Else'))
 
-# Function to generate content using GPT
-def generic_completion(prompt):
-    completions = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.85
-    )
-    message = completions['choices'][0]['message']['content']
-    return message.strip()
 
 # Function to generate a tweet
 def tweet(output):
@@ -57,43 +54,18 @@ def tweet(output):
         "Generate a tweet summarizing the following text. "
         "Make it engaging and concise: " + output)
 
+
 # Email tab
 if tabs == 'Email 📧':
     subject = st.text_input("Email subject:")
-    recipient = st.text_input("Recipient:")
-    details = st.text_area("Email details:")
 
     if st.button(label="Generate Email"):
         try:
-            output = generic_completion("Generate a well-written and engaging email for a political campaign. "
-                                        "The email is to be sent to " + recipient + " with the subject " + subject +
-                                        ". The email should include the following details: " + details)
+            output = chat("Write an engaging email for a political campaign. Make sure it is not repetitive and from "
+                          "candidate's perspective. Use these " \
+                          "details if helpful:" + meta, model="gpt-4")
             st.write("```")
             st.write(output)
             st.write("```")
         except:
             st.write("An error occurred while processing your request.")
-
-# Press Release tab
-elif tabs == 'Press Release 📰':
-    body = st.text_area("Press release content:")
-    if st.button(label="Generate Press Release"):
-        try:
-            output = generic_completion(f"Generate a compelling press release for a political campaign. "
-                                        "The press release should be based on the following: " + body)
-            st.write("```")
-            st.write(output)
-            st.write("```")
-        except:
-            st.write("An error occurred while processing your request.")
-
-# Social Media tab
-elif tabs == 'Social Media 📲':
-    platform = st.selectbox('Select Social Media Platform', ['Twitter 🐦', 'Facebook 👍', 'Instagram 📷', 'LinkedIn 🔗'])
-    category = st.selectbox("Choose a topic:", ["Campaign Announcement 📢", "Policy Position 📚", "Event Invitation 🎟️", "Fundraising 💰"])
-    info = st.text_input("Details", "")
-    if st.button(label="Generate Social Media Post"):
-        prompt = f"Generate an engaging {platform} post for a political campaign on the topic: {category} with details: {info}"
-        #prompt = generate_prompt_with_similar_docs(base_prompt, category, loaded_data)
-        generated_post = generic_completion(prompt)
-        st.write(generated_post)
