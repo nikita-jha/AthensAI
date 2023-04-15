@@ -35,7 +35,7 @@ def embedding(text, model="text-embedding-ada-002"):
     return openai.Embedding.create(input=[text], model=model)['data'][0]['embedding']
 
 
-def search(q, location="United States", news=False, time="w", num=5):
+def search(q, location="United States", news=False, time="w", n=8):
     params = {
         "q": q,
         "location": location,
@@ -43,7 +43,7 @@ def search(q, location="United States", news=False, time="w", num=5):
         "gl": "us",
         "google_domain": "google.com",
         "api_key": st.secrets["SERP_API_KEY"],
-        "num": num
+        "num": n
     }
     if news:
         params["tbm"] = "nws"
@@ -72,7 +72,7 @@ def scrape(url):
     return text
 
 
-def split(text, max_length=4000):
+def split(text, max_length=1000):
     paragraphs = text.split("\n")
     current_length = 0
     current_chunk = []
@@ -99,10 +99,10 @@ def summarize(text, extra=""):
     chunks = list(split(text))
 
     for chunk in chunks:
-        summary = chat(q + chunk)
+        summary = chat(q + chunk, max_tokens=300)
         all.append(summary)
 
     combined = "\n".join(all)
-    final = chat(q + combined)
+    final = chat(q + combined, max_tokens=450)
 
     return final
