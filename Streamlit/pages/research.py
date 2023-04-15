@@ -1,74 +1,57 @@
 import streamlit as st
 import pandas as pd
-import openai
-from datetime import datetime
-import os
-from apify_client import ApifyClient
-from langchain import OpenAI
-from openai.embeddings_utils import get_embedding, cosine_similarity
 import tiktoken
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import openai
+import os
+from apify_client import ApifyClient
+from datetime import datetime
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
 from langchain.agents import create_pandas_dataframe_agent
-
+from util.util import search, embedding, chat, scrape, split, summarize
+from openai.embeddings_utils import get_embedding, cosine_similarity
 
 # embedding model parameters
 embedding_model = "text-embedding-ada-002"
 embedding_encoding = "cl100k_base"  # this the encoding for text-embedding-ada-002
 max_tokens = 8000  # the maximum for text-embedding-ada-002 is 8191
 
-openai.api_key = st.secrets["oai-key"]
-client = ApifyClient(st.secrets["apify-key"])
+openai.api_key = st.secrets["OPENAI_API_KEY"]
+client = ApifyClient(st.secrets["APIFY_KEY"])
 
 encoding = tiktoken.get_encoding(embedding_encoding)
 
-def get_embedding(text, model="text-embedding-ada-002"):
-    text = text.replace("\n", " ")
-    return openai.Embedding.create(input = [text], model=model)['data'][0]['embedding']
-
-def fetch_twitter_data(handles, n, from_date=None, to_date=None):
+def fetch_twitter_data(handles=None, keyword=None, n=100, from_date=None, to_date=None):
     run_input = {
-        "handle": handles,
         "tweetsDesired": n,
-        "profilesDesired": len(handles),
     }
+    if handles is not None:
+        run_input["handle"] = handles
+        run_input["profilesDesired"] = len(handles)
+    elif keyword is not None:
+        run_input["searchTerms"] = keyword
 
     if from_date is not None:
         run_input["from_date"] = from_date
     if to_date is not None:
         run_input["to_date"] = to_date
-    run = client.actor("quacker/twitter-scraper").call(run_input=run_input)
-    tweet_data = [(item['created_at'], item['full_text'], item['user']['screen_name']) for item in client.dataset(run["defaultDatasetId"]).iterate_items()]
-    df = pd.DataFrame(tweet_data, columns=['Date', 'Text', 'Author'])
-    return df
 
-def fetch_twitter_data_by_keyword(keyword, n, from_date=None, to_date=None):
-    run_input = {
-        "searchTerms": keyword,
-        "tweetsDesired": n,
-    }
-
-    if from_date is not None:
-        run_input["from_date"] = from_date
-    if to_date is not None:
-        run_input["to_date"] = to_date
     run = client.actor("quacker/twitter-scraper").call(run_input=run_input)
     tweet_data = [(item['created_at'], item['full_text'], item['user']['screen_name']) for item in client.dataset(run["defaultDatasetId"]).iterate_items()]
     df = pd.DataFrame(tweet_data, columns=['Date', 'Text', 'Author'])
     return df
 
 def generate_embeddings(df):
-    df['embedding'] = df.Text.apply(lambda x: get_embedding(x, model='text-embedding-ada-002'))
+    df['embedding'] = df.Text.apply(lambda x: embedding(x, model='text-embedding-ada-002'))
     embeddings = df['embedding'].apply(lambda x: np.array(x))
     embeddings_matrix = np.vstack(embeddings)
     return embeddings_matrix
-
 
 def generate_summary(messages, model="gpt-3.5-turbo"):
     conversation = [{"role": "system", "content": "Summarize the following clusters in detail:"}]

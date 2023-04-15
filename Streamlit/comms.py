@@ -13,59 +13,69 @@ st.write("This tool generates communications for political campaigns using OpenA
          "Note: GPT-3 might generate incorrect information, so editing output is still necessary. "
          "This is a demo with limitations.")
 
-meta=""
+# Initialize session state variables
+if 'personalize' not in st.session_state:
+    st.session_state['personalize'] = False
 
-personalize = st.checkbox('Personalize?')
-if personalize:
-    name = st.text_input("Candidate Name: ") + " campaign"
-    location = st.text_input("Location: ")
-    if st.button("Personalize"):
-        results = search(name, location)
-        search_dict = []
-        links = 0
-        q = "\nUsing the text, if you can, tell me about the candidate's biographical information, platform, " \
-            "main issues, and audience in detail. Do not just copy verbatim, infer information."
+if 'generate' not in st.session_state:
+    st.session_state['generate'] = False
 
-        while links < 3 and links != len(results):
-            result = results['organic_results'][links]
-            link = result['link']
-            text = scrape(link)
-            if len(text) < 3000:
-                title = result['title']
-                snippet = result['snippet']
-                summary = summarize(text, q)
-                search_dict.append({'title': title, 'link': link, 'snippet': snippet, 'summary': summary})
-                st.write(summary)
-                all = ", ".join([entry['summary'] for entry in search_dict])
-            links += 1
+if 'tabs' not in st.session_state:
+    st.session_state['tabs'] = ''
 
-        meta = summarize(all, q)
-        st.write(meta)
+if 'types' not in st.session_state:
+    st.session_state['types'] = ''
 
-# Create a tab selection
-tabs = st.selectbox(
-    'Which communication do you want to create? 📄',
-    ('Email 📧', 'Else'))
+name = st.text_input("Candidate Name: ") + " campaign"
+location = st.text_input("Location: ")
 
+# Personalize button
+if st.button("Personalize"):
+    st.session_state['personalize'] = True
+    st.session_state['generate'] = False
 
-# Function to generate a tweet
-def tweet(output):
-    return generic_completion(
-        "Generate a tweet summarizing the following text. "
-        "Make it engaging and concise: " + output)
+# Display additional options if the Personalize button has been clicked
+if st.session_state['personalize'] and not st.session_state['generate']:
+    results = search(name, location)
+    search_dict = []
+    links = 0
+    q = "\nUsing the text, if you can, tell me about the candidate's biographical information, platform, " \
+        "main issues, and audience in detail. Do not just copy verbatim, infer information."
 
+    st.write(q)
 
-# Email tab
-if tabs == 'Email 📧':
-    subject = st.text_input("Email subject:")
+    # while links < 2 and links != len(results):
+    #     result = results['organic_results'][links]
+    #     link = result['link']
+    #     text = scrape(link)
+    #     if len(text) < 2000:
+    #         title = result['title']
+    #         snippet = result['snippet']
+    #         summary = summarize(text, q)
+    #         search_dict.append({'title': title, 'link': link, 'snippet': snippet, 'summary': summary})
+    #         all = ", ".join([entry['summary'] for entry in search_dict])
+    #     links += 1
+    #
+    # meta = summarize(all, q)
 
-    if st.button(label="Generate Email"):
-        try:
-            output = chat("Write an engaging email for a political campaign. Make sure it is not repetitive and from "
-                          "candidate's perspective. Use these " \
-                          "details if helpful:" + meta, model="gpt-4")
-            st.write("```")
-            st.write(output)
-            st.write("```")
-        except:
-            st.write("An error occurred while processing your request.")
+    # Create a tab selection
+    tabs = st.selectbox('Type:', ('Email', 'Social Media', 'Press Release'))
+    if tabs == 'Email':
+        types = st.selectbox('Type:', ('Fundraising', 'Volunteer', 'Event', 'Other'))
+        if types == 'Other':
+            types = st.text_input("Details:")
+    if tabs == 'Social Media':
+        types = st.selectbox('Platform:', ('Twitter', 'Facebook', 'Linkedin', 'Other'))
+        if types == 'Other':
+            types = st.text_input("Details:")
+
+    # Generate button
+    if st.button("Generate"):
+        st.session_state['generate'] = True
+
+# Display output if the Generate button has been clicked
+if st.session_state['generate']:
+    output = chat(
+        "hi", model="gpt-4")
+
+    st.write(output)

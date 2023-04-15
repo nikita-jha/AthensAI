@@ -124,3 +124,17 @@ if st.button("Generate CSV"):
         all = comma.join([entry['summary'] for entry in search_dict])
         meta = summarize(all, q)
         print(meta)
+
+    # while links < 3 and links != len(results):
+    #     result = results['organic_results'][links]
+    #     link = result['link']
+    #     text = scrape(link)
+    #     if len(text) < 2000:
+    #         title = result['title']
+    #         snippet = result['snippet']
+    #         summary = summarize(text, q)
+    #         search_dict.append({'title': title, 'link': link, 'snippet': snippet, 'summary': summary})
+    #         all = ", ".join([entry['summary'] for entry in search_dict])
+    #     links += 1
+
+    # meta = summarize(all, q)
