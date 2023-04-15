@@ -1,78 +1,99 @@
 import openai
 import streamlit as st
+from streamlit_chat import message
 import os
-import util.util
-from util.util import chat
-from util.util import search, scrape, split, summarize
+import re
+import time
+import pypdf
+# import pickledb
+import pinecone
+import pandas as pd
+from langchain.llms import OpenAI
+from langchain.chat_models import ChatOpenAI
+from langchain.chains import ChatVectorDBChain
+from langchain.vectorstores import FAISS
+from langchain.vectorstores import Pinecone
+from langchain import GoogleSearchAPIWrapper
+from langchain.agents import initialize_agent, Tool
+from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.chains.question_answering import load_qa_chain
+from langchain.chains import ConversationalRetrievalChain
 
-# Set up page configuration
-st.set_page_config(page_title="comms", page_icon=":mega:", layout="wide")
-st.title("comms")
-st.write("This tool generates communications for political campaigns using OpenAI's GPT-3 service. "
-         "Please enter as much information as you can, and GPT will handle the rest.\n\n"
-         "Note: GPT-3 might generate incorrect information, so editing output is still necessary. "
-         "This is a demo with limitations.")
+# Setting page title and header
+st.set_page_config(page_title="Campaign Advisor", page_icon=":robot_face:")
 
-# Initialize session state variables
-if 'personalize' not in st.session_state:
-    st.session_state['personalize'] = False
+PINECONE_API_KEY = os.getenv("PINE_KEY")
+pinecone.init(
+    api_key=PINECONE_API_KEY,
+    environment="asia-southeast1-gcp"
+)
 
-if 'generate' not in st.session_state:
-    st.session_state['generate'] = False
+index_name = "fec"
+embeddings = OpenAIEmbeddings()
 
+# Read DB
+acc_pinecone = Pinecone.from_existing_index(index_name=index_name, embedding=embeddings)
+
+
+# Initialise session state variables
 if 'generated' not in st.session_state:
-    st.session_state['generated'] = False
+    st.session_state['generated'] = []
+if 'past' not in st.session_state:
+    st.session_state['past'] = []
+if 'messages' not in st.session_state:
+    st.session_state['messages'] = [
+        {"role": "system", "content": "You are a helpful assistant."}
+    ]
+if 'model_name' not in st.session_state:
+    st.session_state['model_name'] = []
 
-name = st.text_input("Candidate Name: ") + " campaign issues bio"
-# Personalize button
-if st.button("Personalize"):
-    st.session_state['personalize'] = True
-    st.session_state['generate'] = False
+# Sidebar - let user choose model and let user clear the current conversation
+st.sidebar.title("Sidebar")
+model_name = st.sidebar.radio("Choose a model:", ("GPT-3.5", "GPT-4"))
+counter_placeholder = st.sidebar.empty()
+clear_button = st.sidebar.button("Clear Conversation", key="clear")
 
-# Display additional options if the Personalize button has been clicked
-if st.session_state['personalize']:
-    if not st.session_state['generate']:
-        st.write("Personalizing! This should take under a minute.")
-    results = search(name)
-    summaries = []
-    q = "\nTell me about the candidate's biography, platform, " \
-        "and main issues. Keep it concise but specific."
+# reset everything
+if clear_button:
+    st.session_state['generated'] = []
+    st.session_state['past'] = []
+    st.session_state['model_name'] = []
 
-    meta = ""
-    for result in results['organic_results']:
-        link = result['link']
-        text = scrape(link)
-        if len(text) < 4000:
-            title = result['title']
-            snippet = result['snippet']
-            summary = chat(text + q, max_tokens=200)
-            summaries.append(summary)
-            st.write(summary)
 
-    all = ", ".join(summary for summary in summaries)
-    meta = chat(all + q, max_tokens=200)
+# generate a response
+def generate_response(prompt, model_name):
+    if model_name == "GPT-3.5":
+        model = "gpt-3.5-turbo"
+    elif model_name == "GPT-4":
+        model = "gpt-4"
 
-    # Create a tab selection
-    tabs = st.selectbox('Type:', ('Email', 'Social Media', 'Press Release'))
-    if tabs == 'Email':
-        types = st.selectbox('Type:', ('Fundraising', 'Volunteer', 'Event', 'Other'))
-        if types == 'Other':
-            types = st.text_input("Details:")
-    if tabs == 'Social Media':
-        types = st.selectbox('Platform:', ('Twitter', 'Facebook', 'Linkedin', 'Other'))
-        if types == 'Other':
-            types = st.text_input("Details:")
+    qa = ChatVectorDBChain.from_llm(ChatOpenAI(temperature=0, model_name=model), acc_pinecone,
+                                    return_source_documents=True)
 
-    # Generate button
-    if st.button("Generate"):
-        st.session_state['generate'] = True
+    result = qa({"question": prompt, "chat_history": ""})
+    response = result['answer']
 
-# Display output if the Generate button has been clicked
-if st.session_state['generate'] and not st.session_state['generated']:
-    st.write(meta)
-    output = chat(
-        f"Generate an engaging, long, and unrepetitive {tabs} for {types} in the perspective of candidate. Use this info, if relevant {meta}.")
-    st.session_state['generated'] = True
+    return response
+
+
+# container for chat history
+response_container = st.container()
+# container for text box
+container = st.container()
+
+with container:
+    with st.form(key='my_form', clear_on_submit=True):
+        user_input = st.text_area("You:", key='input', height=100)
+        submit_button = st.form_submit_button(label='Send')
+
+    if submit_button and user_input:
+        output = generate_response(user_input, model_name)
+        st.session_state['past'].append(user_input)
+        st.session_state['generated'].append(output)
+        st.session_state['model_name'].append(model_name)
 
 if st.session_state['generated']:
-    st.write(output)
+    with response_container:
+        for i in range(len(st.session_state['generated'])):
+            message(st.session_state["past"][i], is_user=True, key=str(i) + '_user')
+            message(st.session_state["generated"][i], key=str(i))
