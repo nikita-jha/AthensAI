@@ -20,43 +20,37 @@ if 'personalize' not in st.session_state:
 if 'generate' not in st.session_state:
     st.session_state['generate'] = False
 
-if 'tabs' not in st.session_state:
-    st.session_state['tabs'] = ''
+if 'generated' not in st.session_state:
+    st.session_state['generated'] = False
 
-if 'types' not in st.session_state:
-    st.session_state['types'] = ''
-
-name = st.text_input("Candidate Name: ") + " campaign"
-location = st.text_input("Location: ")
-
+name = st.text_input("Candidate Name: ") + " campaign issues bio"
 # Personalize button
 if st.button("Personalize"):
     st.session_state['personalize'] = True
     st.session_state['generate'] = False
 
 # Display additional options if the Personalize button has been clicked
-if st.session_state['personalize'] and not st.session_state['generate']:
-    results = search(name, location)
-    search_dict = []
-    links = 0
-    q = "\nUsing the text, if you can, tell me about the candidate's biographical information, platform, " \
-        "main issues, and audience in detail. Do not just copy verbatim, infer information."
+if st.session_state['personalize']:
+    if not st.session_state['generate']:
+        st.write("Personalizing! This should take under a minute.")
+    results = search(name)
+    summaries = []
+    q = "\nTell me about the candidate's biography, platform, " \
+        "and main issues. Keep it concise but specific."
 
-    st.write(q)
+    meta = ""
+    for result in results['organic_results']:
+        link = result['link']
+        text = scrape(link)
+        if len(text) < 4000:
+            title = result['title']
+            snippet = result['snippet']
+            summary = chat(text + q, max_tokens=200)
+            summaries.append(summary)
+            st.write(summary)
 
-    # while links < 2 and links != len(results):
-    #     result = results['organic_results'][links]
-    #     link = result['link']
-    #     text = scrape(link)
-    #     if len(text) < 2000:
-    #         title = result['title']
-    #         snippet = result['snippet']
-    #         summary = summarize(text, q)
-    #         search_dict.append({'title': title, 'link': link, 'snippet': snippet, 'summary': summary})
-    #         all = ", ".join([entry['summary'] for entry in search_dict])
-    #     links += 1
-    #
-    # meta = summarize(all, q)
+    all = ", ".join(summary for summary in summaries)
+    meta = chat(all + q, max_tokens=200)
 
     # Create a tab selection
     tabs = st.selectbox('Type:', ('Email', 'Social Media', 'Press Release'))
@@ -74,8 +68,11 @@ if st.session_state['personalize'] and not st.session_state['generate']:
         st.session_state['generate'] = True
 
 # Display output if the Generate button has been clicked
-if st.session_state['generate']:
+if st.session_state['generate'] and not st.session_state['generated']:
+    st.write(meta)
     output = chat(
-        "hi", model="gpt-4")
+        f"Generate an engaging, long, and unrepetitive {tabs} for {types} in the perspective of candidate. Use this info, if relevant {meta}.")
+    st.session_state['generated'] = True
 
+if st.session_state['generated']:
     st.write(output)
